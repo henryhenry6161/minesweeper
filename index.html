@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>踩地雷 Minesweeper 💣（手機點擊完美版）</title>
+<!-- PWA 加分 -->
+<link rel="manifest" href="data:application/manifest+json,{%22name%22:%22踩地雷%22,%22short_name%22:%22地雷%22,%22start_url%22:%22.%22,%22display%22:%22standalone%22,%22background_color%22:%22%23111%22,%22theme_color%22:%22%234CAF50%22,%22icons%22:[{%22src%22:%22https://em-content.zhuo5.com/emoji-image/apple/512/bomb.png%22,%22sizes%22:%22512x512%22,%22type%22:%22image/png%22}]}">
+<meta name="theme-color" content="#4CAF50">
+<style>
+* {margin:0;padding:0;box-sizing:border-box;}
+body {font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:#111;color:#fff;min-height:100vh;display:flex;flex-direction:column;touch-action:manipulation;}
+header {padding:15px;text-align:center;background:#222;box-shadow:0 2px 10px rgba(0,0,0,.5);}
+h1 {font-size:1.8em;margin-bottom:8px;}
+.controls {margin:12px 0;}
+select,button {padding:10px 16px;font-size:16px;margin:5px;border-radius:8px;border:none;background:#4CAF50;color:#fff;}
+select {background:#333;}
+.info {font-size:1.1em;margin:10px 0;opacity:.9;}
+#board {flex:1;display:grid;gap:2px;margin:15px auto;padding:10px;background:#333;border-radius:12px;box-shadow:0 8px 25px rgba(0,0,0,.6);max-width:95vw;}
+.cell {background:#666;border:2px outset #888;border-radius:4px;cursor:pointer;font-weight:bold;display:flex;align-items:center;justify-content:center;user-select:none;touch-action:manipulation;transition:all .08s ease;}
+.cell:active {transform:scale(.92);background:#777;}
+.cell.revealed {border:1px solid #444;background:#222 !important;}
+.cell.flagged {background:#f44 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M14.4,6L14,4H5V21H7V14H12.6L13,16H20V6H14.4Z'/%3E%3C/svg%3E") center/70% no-repeat;}
+.cell.mine {background:#f44 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4M12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6M13,10V16H11V10H13M13,8V9H11V8H13Z'/%3E%3C/svg%3E") center/80% no-repeat;}
+.number1 {color:#00f;}.number2 {color:#0b0;}.number3 {color:#f00;}.number4 {color:#01017d;}
+.number5 {color:#8b0000;}.number6 {color:#008080;}.number7 {color:#000;}.number8 {color:#888;}
+footer {padding:15px;text-align:center;background:#222;}
+footer button {padding:12px 30px;font-size:18px;}
+</style>
+</head>
+<body>
+<header>
+<h1>踩地雷 💣</h1>
+<div class="controls">
+<select id="difficulty">
+<option value="easy">🟢 Easy (9×9, 10雷)</option>
+<option value="medium" selected>🟡 Medium (16×16, 40雷)</option>
+<option value="hard">🔴 Hard (16×30, 99雷)</option>
+</select>
+</div>
+<div class="info">
+格子：<span id="boardSize">-</span> | 地雷：<span id="mineCount">-</span> | 旗子：<span id="flagCount">-</span>
+</div>
+</header>
+<div id="board"></div>
+<footer><button onclick="initGame()">🔄 重新開始</button></footer>
+
+<script>
+const levels={easy:{rows:9,cols:9,mines:10},medium:{rows:16,cols:16,mines:40},hard:{rows:16,cols:30,mines:99}};
+let ROWS,COLS,TOTAL_MINES,board=[],revealed=[],flagged=[],mineLocations=[],gameOver=false;
+const boardEl=document.getElementById('board'),boardSizeEl=document.getElementById('boardSize'),mineCountEl=document.getElementById('mineCount'),flagCountEl=document.getElementById('flagCount'),difficultySelect=document.getElementById('difficulty');
+
+function addCellEvents(cell,r,c){
+  let pressTimer,pressed=false;
+  const startPress=e=>{e.preventDefault();pressed=true;pressTimer=setTimeout(()=>{toggleFlag(r,c,cell);pressed=false;},500);};
+  const endPress=e=>{if(pressed&&pressTimer){clearTimeout(pressTimer);revealCell(r,c);}pressed=false;};
+  const cancelPress=()=>{clearTimeout(pressTimer);pressed=false;};
+  cell.addEventListener('touchstart',startPress,{passive:false});
+  cell.addEventListener('touchend',endPress,{passive:false});
+  cell.addEventListener('touchmove',cancelPress,{passive:true});
+  cell.addEventListener('touchcancel',cancelPress,{passive:true});
+  // 桌面版
+  cell.addEventListener('click',()=>revealCell(r,c),{passive:true});
+  cell.addEventListener('contextmenu',e=>{e.preventDefault();toggleFlag(r,c,cell);},{passive:false});
+}
+
+function initGame(){
+  const l=levels[difficultySelect.value];ROWS=l.rows;COLS=l.cols;TOTAL_MINES=l.mines;
+  board=[];revealed=[];flagged=[];mineLocations=[];gameOver=false;boardEl.innerHTML='';
+  boardSizeEl.textContent=`${ROWS}×${COLS}`;mineCountEl.textContent=TOTAL_MINES;flagCountEl.textContent=TOTAL_MINES;
+  const w=window.innerWidth*.92,h=window.innerHeight*.58,s=Math.min(Math.floor(Math.min(w/COLS,h/ROWS,44)),44);
+  boardEl.style.gridTemplateColumns=`repeat(${COLS},${s}px)`;boardEl.style.gridAutoRows=`${s}px`;
+  for(let r=0;r<ROWS;r++){
+    board[r]=[];revealed[r]=[];flagged[r]=[];
+    for(let c=0;c<COLS;c++){
+      board[r][c]=0;revealed[r][c]=false;flagged[r][c]=false;
+      const cell=document.createElement('div');cell.className='cell';cell.dataset.r=r;cell.dataset.c=c;
+      addCellEvents(cell,r,c);
+      boardEl.appendChild(cell);
+    }
+  }
+  let placed=0;while(placed<TOTAL_MINES){const r=Math.floor(Math.random()*ROWS),c=Math.floor(Math.random()*COLS);if(board[r][c]!=='M'){board[r][c]='M';mineLocations.push({r,c});placed++;}}
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]!=='M'){let cnt=0;for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){if(dr===0&&dc===0)continue;const nr=r+dr,nc=c+dc;if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&board[nr][nc]==='M')cnt++;}board[r][c]=cnt;}
+}
+
+function revealCell(r,c){
+  if(gameOver||revealed[r][c]||flagged[r][c])return;
+  revealed[r][c]=true;const idx=r*COLS+c,cell=boardEl.children[idx];cell.classList.add('revealed');
+  if(board[r][c]==='M'){gameOver=true;cell.classList.add('mine');cell.textContent='';setTimeout(()=>alert('💥 BOOM！踩到炸彈了～'),50);revealAllMines();return;}
+  if(board[r][c]>0){cell.textContent=board[r][c];cell.classList.add('number'+board[r][c]);}else{for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){const nr=r+dr,nc=c+dc;if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS)revealCell(nr,nc);}}
+  checkWin();
+}
+
+function toggleFlag(r,c,cell){
+  if(gameOver||revealed[r][c])return;flagged[r][c]=!flagged[r][c];cell.classList.toggle('flagged');
+  const correct=mineLocations.filter(m=>flagged[m.r][m.c]).length;flagCountEl.textContent=TOTAL_MINES-correct;
+}
+
+function revealAllMines(){mineLocations.forEach(m=>{const idx=m.r*COLS+m.c,cell=boardEl.children[idx];if(!cell.classList.contains('revealed')){cell.classList.add('revealed','mine');cell.textContent='';}});}
+function checkWin(){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]!=='M'&&!revealed[r][c])return;gameOver=true;setTimeout(()=>alert('🎉 恭喜贏了！完美避開所有炸彈！'),50);}
+
+difficultySelect.addEventListener('change',initGame);window.addEventListener('resize',initGame);initGame();
+</script>
+</body>
+</html>
