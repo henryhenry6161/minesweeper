@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>踩地雷 Minesweeper 💣</title>
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+        background: #111;
+        color: white;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        touch-action: manipulation; /* 提升手機點擊體驗 */
+    }
+    header {
+        padding: 15px;
+        text-align: center;
+        background: #222;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+    h1 {
+        font-size: 1.8em;
+        margin-bottom: 8px;
+    }
+    .controls {
+        margin: 12px 0;
+    }
+    select, button {
+        padding: 10px 16px;
+        font-size: 16px;
+        margin: 5px;
+        border-radius: 8px;
+        border: none;
+        background: #4CAF50;
+        color: white;
+    }
+    select { background: #333; }
+    .info {
+        font-size: 1.1em;
+        margin: 10px 0;
+        opacity: 0.9;
+    }
+    #board {
+        flex: 1;
+        display: grid;
+        gap: 2px;
+        margin: 15px auto;
+        padding: 10px;
+        background: #333;
+        border-radius: 12px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.6);
+        max-width: 95vw;
+    }
+    .cell {
+        background: #666;
+        border: 2px outset #888;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        user-select: none;
+        touch-action: manipulation;
+        transition: transform 0.05s;
+    }
+    .cell:active {
+        transform: scale(0.95);
+    }
+    .cell.revealed {
+        border: 1px solid #444;
+        background: #222 !important;
+    }
+    .cell.flagged {
+        background: #f44 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23fff' d='M14.4,6L14,4H5V21H7V14H12.6L13,16H20V6H14.4Z'/%3E%3C/svg%3E") center/70% no-repeat;
+    }
+    .cell.mine {
+        background: #f44 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4M12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6M13,10V16H11V10H13M13,8V9H11V8H13Z'/%3E%3C/svg%3E") center/80% no-repeat;
+    }
+    .number1 { color: #00f; }
+    .number2 { color: #0b0; }
+    .number3 { color: #f00; }
+    .number4 { color: #01017d; }
+    .number5 { color: #8b0000; }
+    .number6 { color: #008080; }
+    .number7 { color: #000; }
+    .number8 { color: #888; }
+    
+    footer {
+        padding: 15px;
+        text-align: center;
+        background: #222;
+    }
+    footer button {
+        padding: 12px 30px;
+        font-size: 18px;
+    }
+</style>
+</head>
+<body>
+
+<header>
+    <h1>踩地雷 Minesweeper</h1>
+    <div class="controls">
+        <select id="difficulty">
+            <option value="easy">Easy (9×9, 10雷)</option>
+            <option value="medium" selected>Medium (16×16, 40雷)</option>
+            <option value="hard">Hard (16×30, 99雷)</option>
+        </select>
+    </div>
+    <div class="info">
+        格子：<span id="boardSize">-</span> | 地雷：<span id="mineCount">-</span> | 旗子剩餘：<span id="flagCount">-</span>
+    </div>
+</header>
+
+<div id="board"></div>
+
+<footer>
+    <button onclick="initGame()">重新開始</button>
+</footer>
+
+<script>
+const levels = {
+    easy:   { rows: 9,  cols: 9,  mines: 10 },
+    medium: { rows: 16, cols: 16, mines: 40 },
+    hard:   { rows: 16, cols: 30, mines: 99 }
+};
+
+let ROWS, COLS, TOTAL_MINES;
+let board = [], revealed = [], flagged = [], mineLocations = [];
+let gameOver = false;
+let longPressTimer;
+
+const boardEl = document.getElementById('board');
+const boardSizeEl = document.getElementById('boardSize');
+const mineCountEl = document.getElementById('mineCount');
+const flagCountEl = document.getElementById('flagCount');
+const difficultySelect = document.getElementById('difficulty');
+
+// 手機長按插旗（超重要！）
+function addMobileSupport(cell, r, c) {
+    cell.addEventListener('touchstart', e => {
+        e.preventDefault();
+        longPressTimer = setTimeout(() => {
+            toggleFlag(r, c, cell);
+        }, 500);
+    });
+    cell.addEventListener('touchend', () => clearTimeout(longPressTimer));
+    cell.addEventListener('contextmenu', e => e.preventDefault());
+}
+
+function initGame() {
+    const level = levels[difficultySelect.value];
+    ROWS = level.rows; COLS = level.cols; TOTAL_MINES = level.mines;
+    
+    board = []; revealed = []; flagged = []; mineLocations = [];
+    gameOver = false;
+    boardEl.innerHTML = '';
+    
+    boardSizeEl.textContent = `${ROWS}×${COLS}`;
+    mineCountEl.textContent = TOTAL_MINES;
+    flagCountEl.textContent = TOTAL_MINES;
+    
+    // 動態計算格子大小（手機螢幕適應）
+    const maxWidth = window.innerWidth * 0.92;
+    const maxHeight = window.innerHeight * 0.58;
+    const cellSize = Math.floor(Math.min(maxWidth / COLS, maxHeight / ROWS, 42));
+    
+    boardEl.style.gridTemplateColumns = `repeat(${COLS}, ${cellSize}px)`;
+    boardEl.style.gridAutoRows = `${cellSize}px`;
+    
+    for(let r = 0; r < ROWS; r++) {
+        board[r] = []; revealed[r] = []; flagged[r] = [];
+        for(let c = 0; c < COLS; c++) {
+            board[r][c] = 0; revealed[r][c] = false; flagged[r][c] = false;
+            
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.dataset.r = r; cell.dataset.c = c;
+            
+            // 點擊揭開
+            cell.onclick = () => revealCell(r, c);
+            
+            // 手機長按插旗
+            addMobileSupport(cell, r, c);
+            
+            boardEl.appendChild(cell);
+        }
+    }
+    
+    // 放置地雷
+    let placed = 0;
+    while(placed < TOTAL_MINES) {
+        const r = Math.floor(Math.random() * ROWS);
+        const c = Math.floor(Math.random() * COLS);
+        if(board[r][c] !== 'M') {
+            board[r][c] = 'M';
+            mineLocations.push({r, c});
+            placed++;
+        }
+    }
+    
+    // 計算數字
+    for(let r = 0; r < ROWS; r++) for(let c = 0; c < COLS; c++) {
+        if(board[r][c] === 'M') continue;
+        let count = 0;
+        for(let dr = -1; dr <= 1; dr++) for(let dc = -1; dc <= 1; dc++) {
+            if(dr === 0 && dc === 0) continue;
+            const nr = r + dr, nc = c + dc;
+            if(nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && board[nr][nc] === 'M') count++;
+        }
+        board[r][c] = count;
+    }
+}
+
+function revealCell(r, c) {
+    if(gameOver || revealed[r][c] || flagged[r][c]) return;
+    revealed[r][c] = true;
+    const idx = r * COLS + c;
+    const cell = boardEl.children[idx];
+    cell.classList.add('revealed');
+    
+    if(board[r][c] === 'M') {
+        gameOver = true;
+        cell.classList.add('mine');
+        cell.textContent = '';
+        setTimeout(() => alert('BOOM！ 你踩到炸彈了～'), 100);
+        revealAllMines();
+        return;
+    }
+    
+    if(board[r][c] > 0) {
+        cell.textContent = board[r][c];
+        cell.classList.add('number' + board[r][c]);
+    } else {
+        for(let dr = -1; dr <= 1; dr++) for(let dc = -1; dc <= 1; dc++) {
+            const nr = r + dr, nc = c + dc;
+            if(nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) revealCell(nr, nc);
+        }
+    }
+    checkWin();
+}
+
+function toggleFlag(r, c, cellEl) {
+    if(gameOver || revealed[r][c]) return;
+    flagged[r][c] = !flagged[r][c];
+    cellEl.classList.toggle('flagged');
+    const correctFlags = mineLocations.filter(m => flagged[m.r][m.c]).length;
+    flagCountEl.textContent = TOTAL_MINES - correctFlags;
+}
+
+function revealAllMines() {
+    mineLocations.forEach(m => {
+        const idx = m.r * COLS + m.c;
+        const cell = boardEl.children[idx];
+        if(!cell.classList.contains('revealed')) {
+            cell.classList.add('revealed', 'mine');
+            cell.textContent = '';
+        }
+    });
+}
+
+function checkWin() {
+    for(let r = 0; r < ROWS; r++) for(let c = 0; c < COLS; c++) {
+        if(board[r][c] !== 'M' && !revealed[r][c]) return;
+    }
+    gameOver = true;
+    setTimeout(() => alert('恭喜你贏了！完美避開所有炸彈！'), 100);
+}
+
+difficultySelect.addEventListener('change', initGame);
+window.addEventListener('resize', initGame); // 橫豎屏切換自動調整
+
+initGame();
+</script>
+</body>
+</html>
