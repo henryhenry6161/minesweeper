@@ -26,6 +26,24 @@ select {background:#333;}
 .number5 {color:#8b0000;}.number6 {color:#008080;}.number7 {color:#000;}.number8 {color:#888;}
 footer {padding:15px;text-align:center;background:#222;}
 footer button {padding:12px 30px;font-size:18px;}
+  /* 【手機專用】讓 16×16 跟 16×30 板子永遠不會爆版 */
+@media (max-width: 768px) {
+  #board {
+    gap: 1px !important;           /* 縮小格子間距 */
+    padding: 6px !important;       /* 減少四周留白 */
+  }
+  .cell {
+    width: 100% !important;
+    height: 100% !important;
+    font-size: 12px !important;    /* 數字變小一點 */
+    min-height: 22px !important;   /* 避免太小看不清 */
+  }
+  /* 強制讓格子自動縮到剛好塞進螢幕 */
+  #board {
+    grid-template-columns: repeat(auto-fit, minmax(22px, 1fr)) !important;
+    grid-auto-rows: minmax(22px, 1fr) !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -102,4 +120,5 @@ function checkWin(){for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]
 difficultySelect.addEventListener('change',initGame);window.addEventListener('resize',initGame);initGame();
 </script>
 </body>
+
 </html>
